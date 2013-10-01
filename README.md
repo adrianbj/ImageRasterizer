@@ -15,3 +15,6 @@ To use you need to add SVG as an allowed file type for a multiple images field.
 Upload an SVG image and the module will generate a fully transparent (alpha) PNG version. You need to save the page to see the PNG version which can then be accessed via the API like any other image.
 
 More features coming soon.
+
+####Support Forum
+http://processwire.com/talk/topic/4632-image-rasterizer/
