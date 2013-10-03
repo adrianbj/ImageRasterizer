@@ -49,6 +49,7 @@ class ImageRasterizer extends WireData implements Module {
 
         $field = $event->object;
         $inputfield = $this->fields->get($field->name);
+        if(!$inputfield) return;
         if(!$inputfield->type instanceof FieldtypeImage) return;
         $image = $event->argumentsByName("pagefile");
 
