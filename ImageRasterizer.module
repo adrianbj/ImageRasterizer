@@ -14,7 +14,7 @@
  *
  */
 
-class ImageRasterizer extends WireData implements Module {
+class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
     /**
      * getModuleInfo is a module required by all modules to tell ProcessWire about them
@@ -26,13 +26,33 @@ class ImageRasterizer extends WireData implements Module {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 2,
+            'version' => 3,
             'summary' => 'Rasterizes vector SVG images',
             'href' => '',
             'singular' => true,
             'autoload' => true,
             );
     }
+
+    protected static $configDefaults = array(
+        // global
+        "rasterizedImagesField" => "same",
+        "format" => "png",
+        "image_type" => 7,
+        "image_depth" => 8,
+        "png_transparency" => "true",
+        "jpg_compression" => "90",
+        "jpg_background_color" => "#FFFFFF",
+        "png_background_color" => "#FFFFFF",
+        "transparency" => "transparent"
+    );
+
+    /**
+     * Data as used by the get/set functions
+     *
+     */
+    protected $data = array();
+
 
     /**
      * Initialize the module
@@ -42,35 +62,164 @@ class ImageRasterizer extends WireData implements Module {
      *
      */
     public function init() {
+    }
+
+    public function ready() {
+        if($this->page->template != 'admin') return;
         $this->addHookBefore('InputfieldFile::fileAdded', $this, 'rasterizeImage');
     }
 
     public function rasterizeImage(HookEvent $event){
 
+        $image = $event->argumentsByName("pagefile");
+        if(pathinfo($image->filename, PATHINFO_EXTENSION) != 'svg') return; //ignore images without svg extension
         $field = $event->object;
-        $inputfield = $this->fields->get($field->name);
+        $inputfield = $this->rasterizedImagesField == 'same' ? $this->fields->get($field->name) : $this->fields->get($this->rasterizedImagesField); //set inputfield for rasterized image
         if(!$inputfield) return;
         if(!$inputfield->type instanceof FieldtypeImage) return;
-        $image = $event->argumentsByName("pagefile");
+
+        //start rasterizing
+        clearstatcache();
+        $im = new Imagick();
+        if($this->format == 'png'){
+            $png_background_color = $this->image_type == '7' ? new ImagickPixel("transparent") : $this->png_background_color;
+            $im->setBackgroundColor($png_background_color);
+        }
+        else{
+            $im->setBackgroundColor($this->jpg_background_color);
+        }
+
+        $im->readImage($image->filename);
+
+        if($this->format == 'png'){
+            $im->setImageFormat("png");
+            $im->setImageDepth($this->image_depth);
+            $im->setImageColorSpace(imagick::COLORSPACE_RGB);
+            $im->setImageType($this->image_type);
+            //$im->setImageCompressionQuality(100); //not really sure this is doing much
+            //$im->setOption("png:color-type","6");
+            //$im->setOption("png:compression-level","9"); // 9 is highest compression and going down towards 0 just makes huge files with no obvious improvements in quality
+        }
+        else{
+            $im->setImageFormat("jpg");
+            $im->setImageCompression(imagick::COMPRESSION_JPEG);
+            $im->setImageCompressionQuality($this->jpg_compression);
+        }
 
         clearstatcache();
-        $imagickImage = new Imagick();
-        $imagickImage->setBackgroundColor(new ImagickPixel("transparent"));
-        $imagickImage->readImage($image->filename);
-        $imagickImage->setImageFormat("png32");
-        $imagickImage->setImageDepth(8);
-        $imagickImage->setImageColorSpace(imagick::COLORSPACE_RGB);
-        $imagickImage->setImageType(imagick::IMGTYPE_TRUECOLORMATTE);
-        $imagickImage->setOption("png:color-type","6");
-        clearstatcache();
-        $imagickImage->writeImage(str_replace('.svg','.png',$image->filename));
-        $imagickImage->clear();
-        $imagickImage->destroy();
+        $im->writeImage(str_replace('.svg', '.'.$this->format, $image->filename));
+        $im->clear();
+        $im->destroy();
 
         $page = $this->pages->get((int) $this->input->get->id);
 
-        $page->$inputfield->add(str_replace('.svg','.png',$image->filename));
+        $page->$inputfield->add(str_replace('.svg', '.'.$this->format, $image->filename));
         $page->save($inputfield);
+
+    }
+
+
+    /**
+     * Get any inputfields used for configuration of this Fieldtype.
+     *
+     * This is in addition to any configuration fields supplied by the parent Inputfield.
+     *
+     * @param Field $field
+     * @return InputfieldWrapper
+     *
+     */
+    public static function getModuleConfigInputfields(array $data) {
+
+        $modules = wire('modules');
+
+        foreach(self::$configDefaults as $key => $value) {
+            if(!isset($data[$key]) || $data[$key]=='') $data[$key] = $value;
+        }
+
+        $inputfields = new InputfieldWrapper();
+
+        $f = $modules->get("InputfieldSelect");
+        $f->attr('name', 'rasterizedImagesField');
+        $f->attr('value', $data["rasterizedImagesField"]);
+        $f->label = __('Video Images Field');
+        $f->description = __('The field to send the rasterized images to. Choose "Same as source image" to save them to the same images field as the vector image.');
+        $f->addOption('same', 'Same as source image');
+        // populate with all available fields
+        foreach(wire('fields') as $fieldoption) {
+            // filter out incompatible field types
+            if($fieldoption->type == "FieldtypeImage")  $f->addOption($fieldoption->name);
+        }
+        $inputfields->add($f);
+
+        $f = $modules->get("InputfieldSelect");
+        $f->attr('name', 'format');
+        $f->attr('value', $data["format"]);
+        $f->label = __('Image Format');
+        $f->addOption('png');
+        $f->addOption('jpg');
+        $inputfields->add($f);
+
+        //http://www.php.net/manual/en/imagick.getimagetype.php
+        $f = $modules->get("InputfieldSelect");
+        $f->showIf = "format=png";
+        $f->attr('name', 'image_type');
+        $f->attr('value', $data["image_type"]);
+        $f->label = __('Color Type');
+        $f->addOption('7', 'True Color Alpha Transparent');
+        $f->addOption('6', 'True Color');
+        $f->addOption('4', 'Pallete');
+        $inputfields->add($f);
+
+        //http://www.php.net/manual/en/gmagick.setimagedepth.php
+        $f = $modules->get("InputfieldSelect");
+        $f->showIf = "format=png";
+        $f->attr('name', 'image_depth');
+        $f->attr('value', $data["image_depth"]);
+        $f->label = __('Image Depth');
+        $f->addOption('8', '8');
+        $f->addOption('16', '16');
+        $f->addOption('32', '32');
+        $f->notes = __("Default: 8");
+        $inputfields->add($f);
+
+        /*$f = $modules->get("InputfieldSelect");
+        $f->showIf = "format=png";
+        $f->attr('name', 'transparency');
+        $f->attr('value', $data["transparency"]);
+        $f->label = __('Transparency or Matted');
+        $f->addOption('transparent');
+        $f->addOption('matted');
+        $inputfields->add($f);*/
+
+        $f = $modules->get("InputfieldText");
+        $f->showIf = "format=jpg";
+        $f->attr('name', 'jpg_background_color');
+        $f->attr('value', $data["jpg_background_color"]);
+        $f->attr('size', 10);
+        $f->label = __('Background (Matte) Color');
+        $f->notes = __("Default: #FFFFFF");
+        $inputfields->add($f);
+
+        $f = $modules->get("InputfieldText");
+        $f->showIf = "format=png, image_type!=7";
+        $f->attr('name', 'png_background_color');
+        $f->attr('value', $data["png_background_color"]);
+        $f->attr('size', 10);
+        $f->label = __('Background (Matte) Color');
+        $f->notes = __("Default: #FFFFFF");
+        $inputfields->add($f);
+
+        $f = $modules->get("InputfieldText");
+        $f->showIf = "format=jpg";
+        $f->description = __('This determines filesize and image quality as percentage. 100 is the best quality and largest file size.');
+        $f->attr('name', 'jpg_compression');
+        $f->attr('value', $data["jpg_compression"]);
+        $f->attr('size', 10);
+        $f->label = __('JPG Compression Level');
+        $f->notes = __("Default: 90");
+        $inputfields->add($f);
+
+        return $inputfields;
 
     }
 
