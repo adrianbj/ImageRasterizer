@@ -18,6 +18,7 @@ In particular be aware of the Video Images Field selector. If you choose "None" 
 
 NB: You need to be running a recent dev version (or 2.4 stable once available) of Processwire that supports field dependencies for the configuration settings to work as expected.
 
+Once the module configuration settings are completed:
 * Upload an SVG image and the module will create a rasterized version.
 * You need to save the page to see the rasterized version which can then be accessed via the API like any other image.
 * The module also adds a new method: rasterize() which can be called from your templates like:
