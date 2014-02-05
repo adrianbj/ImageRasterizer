@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 6,
+            'version' => 7,
             'summary' => 'Rasterizes vector SVG images',
             'href' => 'http://processwire.com/talk/topic/4632-image-rasterizer/',
             'singular' => true,
@@ -58,15 +58,13 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
     /**
      * Initialize the module
      *
-     * ProcessWire calls this when the module is loaded. For 'autoload' modules, this will be called
-     * when ProcessWire's API is ready. As a result, this is a good place to attach hooks.
-     *
      */
     public function init() {
     }
 
     public function ready() {
         if($this->page->template == 'admin'){
+            $this->addHook('Pageimage::isVariation', $this, 'isVariationWithRasterizer');
             $this->addHookBefore('InputfieldFile::fileAdded', $this, 'rasterizeImage');
         }
         else{
@@ -88,17 +86,27 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
             $newWidth = $rasterDimensions[0];
             $newHeight = $rasterDimensions[1];
         }
-        else{
+        else{ //must be a front-end call from rasterize()
             $image = $event->object;
             $field = $image->field;
+            //if no dimensions specified in rasterize(), use the ones entered in the module config settings
             $newWidth = $event->arguments(0) != '' ? $event->arguments(0) : $rasterDimensions[0];
             $newHeight = $event->arguments(1) != '' ? $event->arguments(1) : $rasterDimensions[1];
         }
 
         $newMaxDimension = $newWidth > $newHeight ? $newWidth : $newHeight;
 
-        if(pathinfo($image->filename, PATHINFO_EXTENSION) != 'svg') return; //ignore images without svg extension
+        if($this->page->template == 'admin' || $event->arguments(0) == ''){
+            $new_img_path = str_replace('.svg', '.'.$this->format, $image->filename);
+        }
+        else{
+            $new_img_path = str_replace('.svg', '.'.$event->arguments(0).'x'.$event->arguments(1).'.'.$this->format, $image->filename);
+        }
 
+        //various checks to stop this module from starting the rasterize process
+        $new_img = new PageImage($this->page->$field, $new_img_path);
+        if(file_exists($new_img_path)) $event->return = $new_img; return; //if rasterized variation already exists, return it now
+        if(pathinfo($image->filename, PATHINFO_EXTENSION) != 'svg') return;
         if($this->rasterizedImagesField == 'none' && $this->page->template == 'admin') return;
 
         if($this->rasterizedImagesField != 'none'){
@@ -108,7 +116,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         }
 
 
-        //start rasterizing
+        //if we get this far, start rasterizing
         clearstatcache();
         $im = new Imagick();
         if($this->format == 'png'){
@@ -145,13 +153,6 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         clearstatcache();
 
         if($event->arguments(0) != '') $im->scaleImage($newWidth,$newHeight);
-        if($this->page->template == 'admin' || $event->arguments(0) == ''){
-            $new_img_path = str_replace('.svg', '.'.$this->format, $image->filename);
-        }
-        else{
-            $new_img_path = str_replace('.svg', '.'.$event->arguments(0).'x'.$event->arguments(1).'.'.$this->format, $image->filename);
-        }
-
         $im->writeImage($new_img_path);
 
         $im->clear();
@@ -163,11 +164,51 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
             $image_page->save($inputfield);
         }
         else{
-            $new_img = new PageImage($this->page->images, $new_img_path);
+            $new_img = new PageImage($this->page->$field, $new_img_path);
             $event->return = $new_img;
         }
 
     }
+
+    /**
+     * Remove any rasterized versions when deleting an SVG in the admin.
+     * This is for images that were created by the rasterize() method on the front-end and therefore not added to the Pageimage, hence the need for this.
+     *
+     */
+    public function isVariationWithRasterizer($event) {
+        $pageimage = $event->object;
+        $variationName = basename($event->arguments[0]);
+
+        // if the result of hooked method isn't false, or if the file isn't an SVG, leave now
+        if(pathinfo($pageimage->filename, PATHINFO_EXTENSION) != 'svg' || false!==$event->return) return $event->return;
+
+        //check to see if the variation also exists in the pageimage - in that case, return and don't remove it.
+        $image_page = $this->pages->get((int) $this->input->get->id);
+        $variation_image = $image_page->{$pageimage->field}->get("$variationName");
+        if($variation_image && !$variation_image->name =='') return $event->return;
+
+        $basename = basename($pageimage->name, '.' . $pageimage->ext);
+        $re = '/^' . $basename . '.*?' . '\.(gif|jpg|png)' . '$/';
+        if(preg_match($re, $variationName)) {
+            // we have a match, now return array with imageinfo
+            // (the following rows are taken from original method Pageimage::isVariation(), only regexp is modified)
+            $re2 = '/^.*?' . $basename . '\.' .
+            '(\d+)x(\d+)' .                           // 50x50
+            '([pd]\d+x\d+|[a-z]{1,2})?' .             // nw or p30x40 or d30x40
+            '\.(gif|jpg|jpeg|png)' .                  // .ext
+            '$/';
+            preg_match($re2, $variationName, $matches);
+            $info = array(
+            'original' => $basename . '.' . $pageimage->ext,
+            'width' => $matches[1],
+            'height' => $matches[2],
+            'crop' => (isset($matches[3]) ? $matches[3] : '')
+            );
+            $event->return = $info;
+            return $event->return;
+        }
+        return false;
+   }
 
 
     /**
