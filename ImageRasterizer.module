@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 3,
+            'version' => 4,
             'summary' => 'Rasterizes vector SVG images',
             'href' => 'http://processwire.com/talk/topic/4632-image-rasterizer/',
             'singular' => true,
@@ -37,6 +37,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
     protected static $configDefaults = array(
         // global
         "rasterizedImagesField" => "same",
+        "rasterDimensions" => "",
         "format" => "png",
         "image_type" => 7,
         "image_depth" => 8,
@@ -62,21 +63,48 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
      *
      */
     public function init() {
+        if($this->page->template != 'admin'){
+            $this->addHook('Pageimage::vectorResize', $this, 'rasterizeImage');
+        }
     }
 
     public function ready() {
-        if($this->page->template != 'admin') return;
-        $this->addHookBefore('InputfieldFile::fileAdded', $this, 'rasterizeImage');
+        if($this->page->template == 'admin'){
+            $this->addHookBefore('InputfieldFile::fileAdded', $this, 'rasterizeImage');
+        }
     }
+
 
     public function rasterizeImage(HookEvent $event){
 
-        $image = $event->argumentsByName("pagefile");
+        $newWidth = '';
+        $newHeight = '';
+
+        if($this->page->template == 'admin'){
+            $image = $event->argumentsByName("pagefile");
+            $field = $event->object;
+            if($this->rasterDimensions != ''){
+                $rasterDimensions = explode(",", preg_replace('/\s+/', '', $this->rasterDimensions));
+                $newWidth = $rasterDimensions[0];
+                $newHeight = $rasterDimensions[1];
+            }
+        }
+        else{
+            $image = $event->object;
+            $field = $image->field;
+            $newWidth = $event->arguments(0);
+            $newHeight = $event->arguments(1);
+        }
+
+        $newMaxDimension = $newWidth > $newHeight ? $newWidth : $newHeight;
+
+
         if(pathinfo($image->filename, PATHINFO_EXTENSION) != 'svg') return; //ignore images without svg extension
-        $field = $event->object;
-        $inputfield = $this->rasterizedImagesField == 'same' ? $this->fields->get($field->name) : $this->fields->get($this->rasterizedImagesField); //set inputfield for rasterized image
+
+        $inputfield = $this->rasterizedImagesField == 'same' || $this->rasterizedImagesField == '' ? $this->fields->get($field->name) : $this->fields->get($this->rasterizedImagesField); //set inputfield for rasterized image
         if(!$inputfield) return;
         if(!$inputfield->type instanceof FieldtypeImage) return;
+
 
         //start rasterizing
         clearstatcache();
@@ -89,6 +117,12 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
             $im->setBackgroundColor($this->jpg_background_color);
         }
 
+        $im->readImage($image->filename); //read the image to get the existing resolution and dimensions
+        $res = $im->getImageResolution();
+        $x_res = ceil($res['x'] * ($newMaxDimension != '' ? $newMaxDimension : $im->getImageWidth()) / $im->getImageWidth());
+        $y_res = ceil($res['y'] * ($newMaxDimension != '' ? $newMaxDimension : $im->getImageHeight()) / $im->getImageHeight());
+        $im->removeImage(); // Remove the image because setResolution has to be called before readImage because the image gets rasterized after that, and setResolution has no effect.
+        $im->setResolution($x_res, $y_res);
         $im->readImage($image->filename);
 
         if($this->format == 'png'){
@@ -107,14 +141,30 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         }
 
         clearstatcache();
-        $im->writeImage(str_replace('.svg', '.'.$this->format, $image->filename));
+
+        if($newWidth != '') $im->scaleImage($newWidth,$newHeight);
+
+        if($this->page->template == 'admin'){
+            $new_img_path = str_replace('.svg', '.'.$this->format, $image->filename);
+        }
+        else{
+            $new_img_path = str_replace('.svg', '.'.$event->arguments(0).'x'.$event->arguments(1).'.'.$this->format, $image->filename);
+        }
+
+        $im->writeImage($new_img_path);
+
         $im->clear();
         $im->destroy();
 
-        $page = $this->pages->get((int) $this->input->get->id);
-
-        $page->$inputfield->add(str_replace('.svg', '.'.$this->format, $image->filename));
-        $page->save($inputfield);
+        if($this->page->template == 'admin'){
+            $image_page = $this->pages->get((int) $this->input->get->id);
+            $image_page->$inputfield->add(str_replace('.svg', '.'.$this->format, $image->filename));
+            $image_page->save($inputfield);
+        }
+        else{
+            $new_img = new PageImage($this->page->images, $new_img_path);
+            $event->return = $new_img;
+        }
 
     }
 
@@ -149,6 +199,15 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
             // filter out incompatible field types
             if($fieldoption->type == "FieldtypeImage")  $f->addOption($fieldoption->name);
         }
+        $inputfields->add($f);
+
+        $f = $modules->get("InputfieldText");
+        $f->attr('name', 'rasterDimensions');
+        $f->attr('value', $data["rasterDimensions"]);
+        $f->attr('size', 10);
+        $f->label = __('Raster Dimensions');
+        $f->description = __('This determines dimensions of the rasterized version. Leave blank to keep same existing dimensions from the SVG.');
+        $f->notes = __("Width, Height. Be sure to enter 0 for one, eg: 500,0");
         $inputfields->add($f);
 
         $f = $modules->get("InputfieldSelect");
