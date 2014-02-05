@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 10,
+            'version' => 11,
             'summary' => 'Rasterizes vector SVG images',
             'href' => 'http://processwire.com/talk/topic/4632-image-rasterizer/',
             'singular' => true,
@@ -41,11 +41,9 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         "format" => "png",
         "image_type" => 7,
         "image_depth" => 8,
-        "png_transparency" => "true",
         "jpg_compression" => "90",
         "jpg_background_color" => "#FFFFFF",
-        "png_background_color" => "#FFFFFF",
-        "transparency" => "transparent"
+        "png_background_color" => "#FFFFFF"
     );
 
     /**
@@ -286,15 +284,6 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         $f->addOption('32', '32');
         $f->notes = __("Default: 8");
         $inputfields->add($f);
-
-        /*$f = $modules->get("InputfieldSelect");
-        $f->showIf = "format=png";
-        $f->attr('name', 'transparency');
-        $f->attr('value', $data["transparency"]);
-        $f->label = __('Transparency or Matted');
-        $f->addOption('transparent');
-        $f->addOption('matted');
-        $inputfields->add($f);*/
 
         $f = $modules->get("InputfieldText");
         $f->showIf = "format=jpg";
