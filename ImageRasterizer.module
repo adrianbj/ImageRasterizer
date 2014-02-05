@@ -106,7 +106,8 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         //various checks to stop this module from starting the rasterize process
         if(file_exists($new_img_path)){
             $new_img = new PageImage($this->page->$field, $new_img_path);
-            $event->return = $new_img; return; //if rasterized variation already exists, return it now
+            $event->return = $new_img;
+            return; //if rasterized variation already exists, return it now
         }
         if(pathinfo($image->filename, PATHINFO_EXTENSION) != 'svg') return;
         if($this->rasterizedImagesField == 'none' && $this->page->template == 'admin') return;
