@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 4,
+            'version' => 5,
             'summary' => 'Rasterizes vector SVG images',
             'href' => 'http://processwire.com/talk/topic/4632-image-rasterizer/',
             'singular' => true,
@@ -64,7 +64,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
      */
     public function init() {
         if($this->page->template != 'admin'){
-            $this->addHook('Pageimage::vectorResize', $this, 'rasterizeImage');
+            $this->addHook('Pageimage::rasterize', $this, 'rasterizeImage');
         }
     }
 
@@ -80,30 +80,32 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         $newWidth = '';
         $newHeight = '';
 
+        if($this->rasterDimensions != '') $rasterDimensions = explode(",", preg_replace('/\s+/', '', $this->rasterDimensions));
+
         if($this->page->template == 'admin'){
             $image = $event->argumentsByName("pagefile");
             $field = $event->object;
-            if($this->rasterDimensions != ''){
-                $rasterDimensions = explode(",", preg_replace('/\s+/', '', $this->rasterDimensions));
-                $newWidth = $rasterDimensions[0];
-                $newHeight = $rasterDimensions[1];
-            }
+            $newWidth = $rasterDimensions[0];
+            $newHeight = $rasterDimensions[1];
         }
         else{
             $image = $event->object;
             $field = $image->field;
-            $newWidth = $event->arguments(0);
-            $newHeight = $event->arguments(1);
+            $newWidth = $event->arguments(0) != '' ? $event->arguments(0) : $rasterDimensions[0];
+            $newHeight = $event->arguments(1) != '' ? $event->arguments(1) : $rasterDimensions[1];
         }
 
         $newMaxDimension = $newWidth > $newHeight ? $newWidth : $newHeight;
 
-
         if(pathinfo($image->filename, PATHINFO_EXTENSION) != 'svg') return; //ignore images without svg extension
 
-        $inputfield = $this->rasterizedImagesField == 'same' || $this->rasterizedImagesField == '' ? $this->fields->get($field->name) : $this->fields->get($this->rasterizedImagesField); //set inputfield for rasterized image
-        if(!$inputfield) return;
-        if(!$inputfield->type instanceof FieldtypeImage) return;
+        if($this->rasterizedImagesField == 'none' && $this->page->template == 'admin') return;
+
+        if($this->rasterizedImagesField != 'none'){
+            $inputfield = $this->rasterizedImagesField == 'same' || $this->rasterizedImagesField == '' ? $this->fields->get($field->name) : $this->fields->get($this->rasterizedImagesField); //set inputfield for rasterized image
+            if(!$inputfield) return;
+            if(!$inputfield->type instanceof FieldtypeImage) return;
+        }
 
 
         //start rasterizing
@@ -144,7 +146,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         if($newWidth != '') $im->scaleImage($newWidth,$newHeight);
 
-        if($this->page->template == 'admin'){
+        if($this->page->template == 'admin' || $newWidth == ''){
             $new_img_path = str_replace('.svg', '.'.$this->format, $image->filename);
         }
         else{
@@ -192,8 +194,9 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         $f->attr('name', 'rasterizedImagesField');
         $f->attr('value', $data["rasterizedImagesField"]);
         $f->label = __('Video Images Field');
-        $f->description = __('The field to send the rasterized images to. Choose "Same as source image" to save them to the same images field as the vector image.');
+        $f->description = __("The field to send the rasterized images to.\n\nChoose 'Same as source image' to save them to the same images field as the vector image.\nChoose 'None' if you don't want a rasterized version saved to the images field. NB You'll still be able to access a raster version in your templates using the Rasterize() method.");
         $f->addOption('same', 'Same as source image');
+        $f->addOption('none', 'None');
         // populate with all available fields
         foreach(wire('fields') as $fieldoption) {
             // filter out incompatible field types
