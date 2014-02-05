@@ -17,7 +17,8 @@ Check the module configuration for a variety of settings for both PNG and JPG ou
 
 * Upload an SVG image and the module will create a rasterized version.
 * You need to save the page to see the rasterized version which can then be accessed via the API like any other image.
-* The module also adds a new method: vectorResize() which can be called from your templates like: $image->vectorResize(200,0)->url
+* The module also adds a new method: vectorResize() which can be called from your templates like:
+```$image->vectorResize(200,0)->url```
 * This new method resizes the vector version of the image and then rasterizes it so you can scale it infinitely and there will be no loss of quality. Make sure you point it to the svg version in your images field.
 
 ####Support Forum
