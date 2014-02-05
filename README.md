@@ -1,7 +1,7 @@
 ImageRasterizer
 ===============
 
-ProcessWire module for rasterizing vector SVG images and adding them into the same image field
+ProcessWire module for admin and front-end resizing and rasterizing of vector SVG images
 
 ###Requirements
 IMPORTANT: This module requires Imagemagick and the pecl imagick extension. For anything but simple SVGs, you must make sure imagemagick was compiled with a relatively recent version of rsvg (I know that 2.32.1 works well and presumably anything more recent should also be fine).
