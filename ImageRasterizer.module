@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 5,
+            'version' => 6,
             'summary' => 'Rasterizes vector SVG images',
             'href' => 'http://processwire.com/talk/topic/4632-image-rasterizer/',
             'singular' => true,
@@ -63,14 +63,14 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
      *
      */
     public function init() {
-        if($this->page->template != 'admin'){
-            $this->addHook('Pageimage::rasterize', $this, 'rasterizeImage');
-        }
     }
 
     public function ready() {
         if($this->page->template == 'admin'){
             $this->addHookBefore('InputfieldFile::fileAdded', $this, 'rasterizeImage');
+        }
+        else{
+            $this->addHook('Pageimage::rasterize', $this, 'rasterizeImage');
         }
     }
 
@@ -144,9 +144,8 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         clearstatcache();
 
-        if($newWidth != '') $im->scaleImage($newWidth,$newHeight);
-
-        if($this->page->template == 'admin' || $newWidth == ''){
+        if($event->arguments(0) != '') $im->scaleImage($newWidth,$newHeight);
+        if($this->page->template == 'admin' || $event->arguments(0) == ''){
             $new_img_path = str_replace('.svg', '.'.$this->format, $image->filename);
         }
         else{
