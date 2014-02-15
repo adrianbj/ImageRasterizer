@@ -14,7 +14,7 @@ If you don't manage your own server and the results are not good, check with you
 You must add SVG as an allowed file type for a multiple images field.
 
 Check the module configuration for a variety of settings for both PNG and JPG output options.
-In particular be aware of the Video Images Field selector. If you choose "None" only the SVG will be stored in the images field. You can still access rasterized versions via the rasterize() method - see below for details.
+In particular be aware of the Rasterized Images Field selector. If you choose "None" only the SVG will be stored in the images field. You can still access rasterized versions via the rasterize() method - see below for details.
 
 NB: You need to be running a recent dev version (or 2.4 stable once available) of Processwire that supports field dependencies for the configuration settings to work as expected.
 

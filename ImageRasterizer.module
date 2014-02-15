@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 11,
+            'version' => 12,
             'summary' => 'Admin and front-end resizing and rasterizing of vector SVG images',
             'href' => 'http://processwire.com/talk/topic/4632-image-rasterizer/',
             'singular' => true,
@@ -234,7 +234,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         $f = $modules->get("InputfieldSelect");
         $f->attr('name', 'rasterizedImagesField');
         $f->attr('value', $data["rasterizedImagesField"]);
-        $f->label = __('Video Images Field');
+        $f->label = __('Rasterized Images Field');
         $f->description = __("The field to send the rasterized images to.\n\nChoose 'Same as source image' to save them to the same images field as the vector image.\nChoose 'None' if you don't want a rasterized version saved to the images field. NB You'll still be able to access a raster version in your templates using the Rasterize() method.");
         $f->addOption('same', 'Same as source image');
         $f->addOption('none', 'None');
