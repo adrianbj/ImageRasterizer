@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 12,
+            'version' => 13,
             'summary' => 'Admin and front-end resizing and rasterizing of vector SVG images',
             'href' => 'http://processwire.com/talk/topic/4632-image-rasterizer/',
             'singular' => true,
@@ -73,32 +73,29 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
     public function rasterizeImage(HookEvent $event){
 
-        $newWidth = '';
-        $newHeight = '';
-
-        if($this->rasterDimensions != '') $rasterDimensions = explode(",", preg_replace('/\s+/', '', $this->rasterDimensions));
-
         if($this->page->template == 'admin'){
             $image = $event->argumentsByName("pagefile");
             $field = $event->object;
-            $newWidth = $rasterDimensions[0];
-            $newHeight = $rasterDimensions[1];
         }
         else{ //must be a front-end call from rasterize()
             $image = $event->object;
             $field = $image->field;
-            //if no dimensions specified in rasterize(), use the ones entered in the module config settings
-            $newWidth = $event->arguments(0) != '' ? $event->arguments(0) : $rasterDimensions[0];
-            $newHeight = $event->arguments(1) != '' ? $event->arguments(1) : $rasterDimensions[1];
         }
 
-        $newMaxDimension = $newWidth > $newHeight ? $newWidth : $newHeight;
+        if(pathinfo($image->filename, PATHINFO_EXTENSION) != 'svg') return; // leave now if we are not dealing with an SVG file
 
-        if($this->page->template == 'admin' || $event->arguments(0) == ''){
+
+        // these are the values sent when using rasterize(w,h)
+        if($this->page->template != 'admin'){
+            $rasterizeWidth = $event->arguments(0);
+            $rasterizeHeight = $event->arguments(1);
+        }
+
+        if($this->page->template == 'admin' || (!isset($rasterizeWidth)&& !isset($rasterizeHeight))){
             $new_img_path = str_replace('.svg', '.'.$this->format, $image->filename);
         }
         else{
-            $new_img_path = str_replace('.svg', '.'.$event->arguments(0).'x'.$event->arguments(1).'.'.$this->format, $image->filename);
+            $new_img_path = str_replace('.svg', '.'.$rasterizeWidth.'x'.$rasterizeHeight.'.'.$this->format, $image->filename);
         }
 
         //various checks to stop this module from starting the rasterize process
@@ -107,7 +104,6 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
             $event->return = $new_img;
             return; //if rasterized variation already exists, return it now
         }
-        if(pathinfo($image->filename, PATHINFO_EXTENSION) != 'svg') return;
         if($this->rasterizedImagesField == 'none' && $this->page->template == 'admin') return;
 
         if($this->rasterizedImagesField != 'none'){
@@ -117,10 +113,11 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         }
 
 
-        //if we get this far, start rasterizing
+        //if we get this far, get SVG details, resize and rasterize
         clearstatcache();
         $im = new Imagick();
         if($this->format == 'png'){
+            // http://www.php.net/manual/en/imagick.getimagetype.php - "7" is imagick::IMGTYPE_TRUECOLORMATTE
             $png_background_color = $this->image_type == '7' ? new ImagickPixel("transparent") : $this->png_background_color;
             $im->setBackgroundColor($png_background_color);
         }
@@ -128,14 +125,46 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
             $im->setBackgroundColor($this->jpg_background_color);
         }
 
-        $im->readImage($image->filename); //read the image to get the existing resolution and dimensions
+        //read the image to get the existing resolution and dimensions
+        $im->readImage($image->filename);
         $res = $im->getImageResolution();
-        $x_res = ceil($res['x'] * ($newMaxDimension != '' ? $newMaxDimension : $im->getImageWidth()) / $im->getImageWidth());
-        $y_res = ceil($res['y'] * ($newMaxDimension != '' ? $newMaxDimension : $im->getImageHeight()) / $im->getImageHeight());
+
+        //get initial dimensions from the SVG
+        $initialWidth = $im->getImageWidth();
+        $initialHeight = $im->getImageHeight();
+
+        //get entered dimensions from module config settings
+        $rasterDimensions = '';
+        if($this->rasterDimensions != '') $rasterDimensions = explode(",", preg_replace('/\s+/', '', $this->rasterDimensions));
+
+        //set new dimensions to those in the module config settings, or if not set, then to the original dimensions of the SVG
+        $newWidth = $rasterDimensions ? $rasterDimensions[0] : $initialWidth;
+        $newHeight = $rasterDimensions ? $rasterDimensions[1] : $initialHeight;
+
+        if($this->page->template != 'admin'){ //if front-end rasterize, and dimensions set, override dimensions just set above
+            //if no dimensions specified in rasterize(), use the ones entered in the module config settings or revert to initial dimensions
+            if(isset($rasterizeWidth)) $newWidth = $rasterizeWidth;
+            if(isset($rasterizeHeight)) $newHeight = $rasterizeHeight;
+        }
+
+        // if one of the dimensions is set to 0 (which it should be), then calculate the other dimension, otherwise just squish the image. Maybe should be cropping instead, but this could be handled by using a PW ->size() on the newly created PNG.
+        if($newWidth == 0 || $newHeight == 0){
+            if($newWidth > $newHeight){
+                $newHeight = round($newWidth / $initialWidth * $initialHeight);
+            }
+            else{
+                $newWidth = round($newHeight / $initialHeight * $initialWidth);
+            }
+        }
+
+        // calculate the resolution required before rasterizing based on the initial dimensions and the final required dimensions
+        $x_res = round($res['x'] * $newWidth / $initialWidth);
+        $y_res = round($res['y'] * $newHeight / $initialHeight);
         $im->removeImage(); // Remove the image because setResolution has to be called before readImage because the image gets rasterized after that, and setResolution has no effect.
         $im->setResolution($x_res, $y_res);
         $im->readImage($image->filename);
 
+        //rasterize
         if($this->format == 'png'){
             $im->setImageFormat("png");
             $im->setImageDepth($this->image_depth);
@@ -153,17 +182,18 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         clearstatcache();
 
-        if($event->arguments(0) != '') $im->scaleImage($newWidth,$newHeight);
         $im->writeImage($new_img_path);
 
         $im->clear();
         $im->destroy();
 
+        //add rasterized version to the images field
         if($this->page->template == 'admin'){
             $image_page = $this->pages->get((int) $this->input->get->id);
             $image_page->$inputfield->add(str_replace('.svg', '.'.$this->format, $image->filename));
             $image_page->save($inputfield);
         }
+        //front-end, so don't add to images field, just return the rasterized version to the rasterize() method for display
         else{
             $new_img = new PageImage($this->page->$field, $new_img_path);
             $event->return = $new_img;
@@ -251,7 +281,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         $f->attr('size', 10);
         $f->label = __('Raster Dimensions');
         $f->description = __('This determines dimensions of the rasterized version. Leave blank to keep same existing dimensions from the SVG.');
-        $f->notes = __("Width, Height. Be sure to enter 0 for one, eg: 500,0");
+        $f->notes = __("Width, Height. Be sure to enter 0 for one dimension to ensure proportional scaling, eg: 500,0");
         $inputfields->add($f);
 
         $f = $modules->get("InputfieldSelect");
