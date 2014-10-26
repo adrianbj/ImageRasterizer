@@ -26,9 +26,9 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 14,
+            'version' => 15,
             'summary' => 'Admin and front-end resizing and rasterizing of vector SVG images',
-            'href' => 'http://processwire.com/talk/topic/4632-image-rasterizer/',
+            'href' => 'http://modules.processwire.com/modules/image-rasterizer/',
             'singular' => true,
             'autoload' => true,
             'icon'     => 'file-image-o'
