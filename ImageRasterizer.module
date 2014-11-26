@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 15,
+            'version' => 16,
             'summary' => 'Admin and front-end resizing and rasterizing of vector SVG images',
             'href' => 'http://modules.processwire.com/modules/image-rasterizer/',
             'singular' => true,
@@ -99,12 +99,22 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
             $new_img_path = str_replace('.svg', '.'.$rasterizeWidth.'x'.$rasterizeHeight.'.'.$this->format, $image->filename);
         }
 
+        if(!$this->page->$field) { //if the current page does not contain the image field - eg an ajax called script
+            $pathSegments = explode('/', $new_img_path);
+            $pageId = (int) $pathSegments[count($pathSegments)-2];
+            $imagePage = $this->pages->get($pageId);
+        }
+        else {
+            $imagePage = $this->page;
+        }
+
         //various checks to stop this module from starting the rasterize process
         if(file_exists($new_img_path)){
-            $new_img = new PageImage($this->page->$field, $new_img_path);
+            $new_img = new PageImage($imagePage->$field, $new_img_path);
             $event->return = $new_img;
             return; //if rasterized variation already exists, return it now
         }
+
         if($this->rasterizedImagesField == 'none' && $this->page->template == 'admin') return;
 
         if($this->rasterizedImagesField != 'none'){
@@ -196,7 +206,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         }
         //front-end, so don't add to images field, just return the rasterized version to the rasterize() method for display
         else{
-            $new_img = new PageImage($this->page->$field, $new_img_path);
+            $new_img = new PageImage($imagePage->$field, $new_img_path);
             $event->return = $new_img;
         }
 
