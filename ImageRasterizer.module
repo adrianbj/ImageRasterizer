@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 16,
+            'version' => 17,
             'summary' => 'Admin and front-end resizing and rasterizing of vector SVG images',
             'href' => 'http://modules.processwire.com/modules/image-rasterizer/',
             'singular' => true,
@@ -52,6 +52,8 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
      *
      */
     protected $data = array();
+    protected $thumbWidth = 0;
+    protected $thumbHeight = 100;
 
 
     /**
@@ -65,6 +67,9 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         if($this->page->template == 'admin'){
             $this->addHook('Pageimage::isVariation', $this, 'isVariationWithRasterizer');
             $this->addHookBefore('InputfieldFile::fileAdded', $this, 'rasterizeImage');
+            if($this->rasterizedImagesField == 'replace') {
+                $this->addHookAfter('InputfieldImage::renderItem', $this, 'rasterizeThumb');
+            }
         }
         else{
             $this->addHook('Pageimage::rasterize', $this, 'rasterizeImage');
@@ -72,19 +77,34 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
     }
 
 
-    public function rasterizeImage(HookEvent $event){
+    public function rasterizeThumb(HookEvent $event){
+        $this->thumbWidth = $this->config->adminThumbOptions['width'] ? $this->config->adminThumbOptions['width'] : $this->thumbWidth;
+        $this->thumbHeight = $this->config->adminThumbOptions['height'] ? $this->config->adminThumbOptions['height'] : $this->thumbHeight;
+        $dom = new DOMDocument();
+        $dom->loadHTML(mb_convert_encoding($event->return, 'HTML-ENTITIES', 'UTF-8'));
+        foreach($dom->getElementsByTagName('img') as $img) {
+            $fullFilename = $img->getAttribute('src');
+            if(strpos(pathinfo($fullFilename, PATHINFO_EXTENSION), 'svg') !== FALSE) {
+                $this->rasterizeImage($event, true);
+                $img->setAttribute('src', str_replace(".svg", ".".$this->thumbWidth."x".$this->thumbHeight.".".$this->format, $fullFilename));
+            }
+        }
+        $event->return = $dom->saveHTML();
+    }
+
+
+    public function rasterizeImage(HookEvent $event, $replacethumb = false){
 
         if($this->page->template == 'admin'){
             $image = $event->argumentsByName("pagefile");
-            $field = $event->object;
+            $fieldname = $event->object->name;
         }
         else{ //must be a front-end call from rasterize()
             $image = $event->object;
-            $field = $image->field;
+            $fieldname = $image->field;
         }
 
         if(pathinfo($image->filename, PATHINFO_EXTENSION) != 'svg') return; // leave now if we are not dealing with an SVG file
-
 
         // these are the values sent when using rasterize(w,h)
         if($this->page->template != 'admin'){
@@ -92,14 +112,19 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
             $rasterizeHeight = $event->arguments(1);
         }
 
-        if($this->page->template == 'admin' || (!isset($rasterizeWidth)&& !isset($rasterizeHeight))){
+        if($replacethumb == true){
+            $rasterizeWidth = $this->thumbWidth;
+            $rasterizeHeight = $this->thumbHeight;
+        }
+
+        if(($this->page->template == 'admin' && $replacethumb == false) || (!isset($rasterizeWidth) && !isset($rasterizeHeight))){
             $new_img_path = str_replace('.svg', '.'.$this->format, $image->filename);
         }
         else{
             $new_img_path = str_replace('.svg', '.'.$rasterizeWidth.'x'.$rasterizeHeight.'.'.$this->format, $image->filename);
         }
 
-        if(!$this->page->$field) { //if the current page does not contain the image field - eg an ajax called script
+        if(!$this->page->$fieldname) { //if the current page does not contain the image field - eg an ajax called script
             $pathSegments = explode('/', $new_img_path);
             $pageId = (int) $pathSegments[count($pathSegments)-2];
             $imagePage = $this->pages->get($pageId);
@@ -110,19 +135,18 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         //various checks to stop this module from starting the rasterize process
         if(file_exists($new_img_path)){
-            $new_img = new PageImage($imagePage->$field, $new_img_path);
+            $new_img = new PageImage($imagePage->$fieldname, $new_img_path);
             $event->return = $new_img;
             return; //if rasterized variation already exists, return it now
         }
 
-        if($this->rasterizedImagesField == 'none' && $this->page->template == 'admin') return;
+        if($this->rasterizedImagesField == 'none' && $this->page->template == 'admin' && $replacethumb == false) return;
 
         if($this->rasterizedImagesField != 'none'){
-            $inputfield = $this->rasterizedImagesField == 'same' || $this->rasterizedImagesField == '' ? $this->fields->get($field->name) : $this->fields->get($this->rasterizedImagesField); //set inputfield for rasterized image
+            $inputfield = $this->rasterizedImagesField == 'same' || $this->rasterizedImagesField == 'replace' || $this->rasterizedImagesField == '' ? $this->fields->get($fieldname) : $this->fields->get($this->rasterizedImagesField); //set inputfield for rasterized image
             if(!$inputfield) return;
             if(!$inputfield->type instanceof FieldtypeImage) return;
         }
-
 
         //if we get this far, get SVG details, resize and rasterize
         clearstatcache();
@@ -152,7 +176,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         $newWidth = $rasterDimensions ? $rasterDimensions[0] : $initialWidth;
         $newHeight = $rasterDimensions ? $rasterDimensions[1] : $initialHeight;
 
-        if($this->page->template != 'admin'){ //if front-end rasterize, and dimensions set, override dimensions just set above
+        if($this->page->template != 'admin' || $replacethumb == true){ //if front-end rasterize (or replacing admin thumb), and dimensions set, override dimensions just set above
             //if no dimensions specified in rasterize(), use the ones entered in the module config settings or revert to initial dimensions
             if(isset($rasterizeWidth)) $newWidth = $rasterizeWidth;
             if(isset($rasterizeHeight)) $newHeight = $rasterizeHeight;
@@ -181,7 +205,6 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
             $im->setImageDepth($this->image_depth);
             $im->setImageColorSpace(imagick::COLORSPACE_RGB);
             $im->setImageType($this->image_type);
-            //$im->setImageCompressionQuality(100); //not really sure this is doing much
             //$im->setOption("png:color-type","6");
             //$im->setOption("png:compression-level","9"); // 9 is highest compression and going down towards 0 just makes huge files with no obvious improvements in quality
         }
@@ -199,14 +222,14 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         $im->destroy();
 
         //add rasterized version to the images field
-        if($this->page->template == 'admin'){
+        if($this->page->template == 'admin' && $replacethumb == false){
             $image_page = $this->pages->get((int) $this->input->get->id);
             $image_page->$inputfield->add(str_replace('.svg', '.'.$this->format, $image->filename));
             $image_page->save($inputfield);
         }
         //front-end, so don't add to images field, just return the rasterized version to the rasterize() method for display
         else{
-            $new_img = new PageImage($imagePage->$field, $new_img_path);
+            $new_img = new PageImage($imagePage->$fieldname, $new_img_path);
             $event->return = $new_img;
         }
 
@@ -276,8 +299,9 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         $f->attr('name', 'rasterizedImagesField');
         $f->attr('value', $data["rasterizedImagesField"]);
         $f->label = __('Rasterized Images Field');
-        $f->description = __("The field to send the rasterized images to.\n\nChoose 'Same as source image' to save them to the same images field as the vector image.\nChoose 'None' if you don't want a rasterized version saved to the images field. NB You'll still be able to access a raster version in your templates using the Rasterize() method.");
+        $f->description = __("The field to send the rasterized images to.\n\nChoose 'Same as source image' to save them to the same images field as the vector image.\nChoose 'Replace the source image thumbnail' to replace the SVG with a rasterized version when viewing the thumbnails in the admin. This can significantly speed things up with complex SVG files.\nChoose 'None' if you don't want a rasterized version saved to the images field. NB You'll still be able to access a raster version in your templates using the rasterize() method.");
         $f->addOption('same', 'Same as source image');
+        $f->addOption('replace', 'Replace the source image thumbnail');
         $f->addOption('none', 'None');
         // populate with all available fields
         foreach(wire('fields') as $fieldoption) {
