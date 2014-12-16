@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 18,
+            'version' => 19,
             'summary' => 'Admin and front-end resizing and rasterizing of vector SVG images',
             'href' => 'http://modules.processwire.com/modules/image-rasterizer/',
             'singular' => true,
@@ -112,7 +112,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
             $rasterizeHeight = $event->arguments(1);
         }
 
-        if($this->rasterizedImagesField == 'replace'){
+        elseif($this->page->template == 'admin' && $this->rasterizedImagesField == 'replace'){
             $rasterizeWidth = $this->thumbWidth;
             $rasterizeHeight = $this->thumbHeight;
         }
