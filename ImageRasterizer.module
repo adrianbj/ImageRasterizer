@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 19,
+            'version' => 20,
             'summary' => 'Admin and front-end resizing and rasterizing of vector SVG images',
             'href' => 'http://modules.processwire.com/modules/image-rasterizer/',
             'singular' => true,
@@ -81,6 +81,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         $this->thumbWidth = $this->config->adminThumbOptions['width'] ? $this->config->adminThumbOptions['width'] : $this->thumbWidth;
         $this->thumbHeight = $this->config->adminThumbOptions['height'] ? $this->config->adminThumbOptions['height'] : $this->thumbHeight;
         $dom = new DOMDocument();
+        libxml_use_internal_errors(true); //hide any errors that relate to invalid HTML in the textarea code
         $dom->loadHTML(mb_convert_encoding($event->return, 'HTML-ENTITIES', 'UTF-8'));
         foreach($dom->getElementsByTagName('img') as $img) {
             $fullFilename = $img->getAttribute('src');
