@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 20,
+            'version' => 21,
             'summary' => 'Admin and front-end resizing and rasterizing of vector SVG images',
             'href' => 'http://modules.processwire.com/modules/image-rasterizer/',
             'singular' => true,
@@ -250,8 +250,10 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         //check to see if the variation also exists in the pageimage - in that case, return and don't remove it.
         $image_page = $this->pages->get((int) $this->input->get->id);
-        $variation_image = $image_page->{$pageimage->field}->get("$variationName");
-        if($variation_image && !$variation_image->name =='') return $event->return;
+        if(count($image_page->{$pageimage->field})) {
+            $variation_image = $image_page->{$pageimage->field}->get("$variationName");
+            if($variation_image && !$variation_image->name =='') return $event->return;
+        }
 
         $basename = basename($pageimage->name, '.' . $pageimage->ext);
         $re = '/^' . $basename . '.*?' . '\.(gif|jpg|png)' . '$/';
