@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => 21,
+            'version' => 22,
             'summary' => 'Admin and front-end resizing and rasterizing of vector SVG images',
             'href' => 'http://modules.processwire.com/modules/image-rasterizer/',
             'singular' => true,
@@ -136,7 +136,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         //various checks to stop this module from starting the rasterize process
         if(file_exists($new_img_path)){
-            $new_img = new PageImage($imagePage->$fieldname, $new_img_path);
+            $new_img = new Pageimage($imagePage->$fieldname, $new_img_path);
             $event->return = $new_img;
             return; //if rasterized variation already exists, return it now
         }
@@ -230,7 +230,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         }
         //front-end, so don't add to images field, just return the rasterized version to the rasterize() method for display
         else{
-            $new_img = new PageImage($imagePage->$fieldname, $new_img_path);
+            $new_img = new Pageimage($imagePage->$fieldname, $new_img_path);
             $event->return = $new_img;
         }
 
