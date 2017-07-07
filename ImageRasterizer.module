@@ -26,7 +26,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
 
         return array(
             'title' => 'ImageRasterizer',
-            'version' => '0.2.3',
+            'version' => '0.2.4',
             'summary' => 'Admin and front-end resizing and rasterizing of vector SVG images',
             'href' => 'http://modules.processwire.com/modules/image-rasterizer/',
             'singular' => true,
@@ -106,7 +106,7 @@ class ImageRasterizer extends WireData implements Module, ConfigurableModule {
         }
 
         // get actual fieldname if it's a repeater field
-        $fieldname = strstr($fieldname, '_repeater', true);
+        if (strpos($fieldname, '_repeater') !== false) $fieldname = strstr($fieldname, '_repeater', true);
 
         if(pathinfo($image->filename, PATHINFO_EXTENSION) != 'svg') return; // leave now if we are not dealing with an SVG file
 
